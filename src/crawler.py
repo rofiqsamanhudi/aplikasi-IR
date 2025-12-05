@@ -1,72 +1,62 @@
 import requests
-from bs4 import BeautifulSoup, Tag
-import csv
-from pathlib import Path
+import pandas as pd
 import time
 
-def crawl_quotes(output_file="data/quotes_raw.csv"):
-    # pastikan folder ada
-    Path(output_file).parent.mkdir(parents=True, exist_ok=True)
+API_KEY = "20b3f92ba0d825a596bca80edf913009"
+BASE_URL = "https://api.themoviedb.org/3"
 
-    base_url = "https://quotes.toscrape.com/page/{}/"
-    all_data = []
+MAX_DATA = 10000
+PER_PAGE = 20
+MAX_PAGE = MAX_DATA // PER_PAGE
 
-    page = 1
-    while True:
-        url = base_url.format(page)
-        print(f"[INFO] Crawling page {page} -> {url}")
+def get_page(page):
+    url = f"{BASE_URL}/movie/popular?api_key={API_KEY}&page={page}"
+    response = requests.get(url)
+    return response.json()
 
-        try:
-            r = requests.get(url, timeout=10)
-        except requests.RequestException as e:
-            print(f"[ERROR] Request failed: {e}")
+def get_detail(movie_id):
+    url = f"{BASE_URL}/movie/{movie_id}?api_key={API_KEY}"
+    response = requests.get(url)
+    return response.json()
+
+film_data = []
+page = 1
+
+print(f"Mengambil maksimal {MAX_DATA} film dari TMDb\n")
+
+while page <= MAX_PAGE:
+    print(f"Mengambil halaman {page}...")
+    data = get_page(page)
+
+    if "results" not in data:
+        break
+
+    for m in data["results"]:
+        detail = get_detail(m["id"])
+
+        film_data.append({
+            "id": m["id"],
+            "judul_asli": detail.get("original_title", ""),
+            "judul_display": detail.get("title", ""),
+            "sinopsis_asli": detail.get("overview", ""),
+            "genre": ", ".join([g["name"] for g in detail.get("genres", [])]),
+            "tanggal_rilis": detail.get("release_date", ""),
+            "rating": detail.get("vote_average", 0),
+            "popularitas": detail.get("popularity", 0),
+            "bahasa_asli": detail.get("original_language", "")
+        })
+
+        if len(film_data) >= MAX_DATA:
             break
 
-        if r.status_code != 200:
-            print(f"[DONE] Status code {r.status_code} — no more pages or blocked.")
-            break
+    if len(film_data) >= MAX_DATA:
+        break
 
-        # gunakan content untuk parse
-        soup = BeautifulSoup(r.content, "html.parser")
-        quotes = soup.find_all("div", class_="quote")
+    page += 1
+    time.sleep(0.25)
 
-        if not quotes:
-            print("[DONE] No data found on this page.")
-            break
+df = pd.DataFrame(film_data)
+df.to_csv("data/tmdb_10000_film.csv", index=False, encoding="utf-8")
 
-        for i, q in enumerate(quotes, start=1):
-            # pastikan q adalah Tag yang punya method .find
-            if not isinstance(q, Tag):
-                print(f"[WARN] Skipping non-Tag element at page {page} index {i}")
-                continue
-
-            # ambil elemen dengan pengecekan None-safe
-            text_tag = q.find("span", class_="text")
-            author_tag = q.find("small", class_="author")
-            tag_tags = q.find_all("a", class_="tag")
-
-            text = text_tag.get_text(strip=True) if text_tag else ""
-            author = author_tag.get_text(strip=True) if author_tag else ""
-            tags = [t.get_text(strip=True) for t in tag_tags] if tag_tags else []
-
-            # optional: skip jika text kosong
-            if not text:
-                print(f"[WARN] Empty text at page {page} index {i} — skipping")
-                continue
-
-            all_data.append([text, author, ", ".join(tags)])
-
-        page += 1
-        time.sleep(0.5)  # jeda kecil agar tidak membebani server
-
-    # tulis CSV
-    with open(output_file, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["text", "author", "tags"])
-        writer.writerows(all_data)
-
-    print(f"[DONE] {len(all_data)} quotes saved to {output_file}")
-
-
-if __name__ == "__main__":
-    crawl_quotes()
+print("\n SELESAI! File disimpan sebagai: tmdb_10000_film.csv")
+print(f"Total data diambil: {len(df)}")

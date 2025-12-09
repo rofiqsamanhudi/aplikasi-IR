@@ -3,17 +3,10 @@ import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-def clean_genre(g):
-    if isinstance(g, float):
-        return ""
-    g = g.lower()
-    g = re.sub(r"[^a-zA-Z ]", " ", g)
-    return g
-
 def load_data(path="data/tmdb_10000_film_clean.csv"):
     print("[INFO] Loading dataset...")
     df = pd.read_csv(path)
-    df["genre_clean_text"] = df["genre"].astype(str).apply(clean_genre)
+    df["genre_clean_text"] = df["genre"].astype(str).apply
     df["text"] = df["genre_clean_text"]
     print(f"[INFO] Data loaded: {len(df)}")
     return df
